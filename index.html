@@ -1,0 +1,342 @@
+<html>
+<head>
+<script src="classify.js" type="text/JavaScript"></script>
+<script type="text/JavaScript">
+window.onload = function() {
+  /**
+   * Grabs an element by its ID.
+   * @param  {string} id The ID attribute of the element to be retrieved.
+   * @return {?Element} If an element with the specified ID is found, return it,
+   *     otherwise return null.
+   */
+  function $id(id) {
+    return document.getElementById(id);
+  }
+
+  function onMouseDown(e) {
+    if (drawing = mode == MODE_EDIT) {
+      onMouseMove(e);
+    }
+  }
+
+  function onMouseMove(e) {
+    if (drawing) {
+      var x = e.offsetX || e.layerX, y = e.offsetY || e.layerY;
+      x = parseInt(x / BLOCK_WIDTH);
+      y = parseInt(y / BLOCK_HEIGHT);
+      var blockCoord = x + ',' + y;
+      if (lastBlockCoord != blockCoord) {
+        lastBlockCoord = blockCoord;
+        myMap.setBlockAt(x, y, blockType);
+      }
+    }
+  }
+
+  function onMouseUp(e) {
+    if (drawing) {
+      drawing = false;
+    }
+  }
+
+  BLOCK_TYPE_WALL = 'Wall';
+  BLOCK_TYPE_FOOD = 'Food';
+  BLOCK_TYPE_GRASS = 'Grass';
+  BLOCK_TYPE_DIET = 'Diet';
+  BLOCK_TYPE_SPEED = 'Speed';
+  BLOCK_TYPE_WORM = 'Worm';
+  blockType = BLOCK_TYPE_WALL;
+
+  var canvas = $id('canvasGame');
+  var MAP_WIDTH = 400;
+  var MAP_HEIGHT = 400;
+  var BLOCK_WIDTH = 16;
+  var BLOCK_HEIGHT = 16;
+  var drawing, drawingLine;
+  var MODE_EDIT = 'Edit';
+  var MODE_PLAYING = 'Playing';
+  var mode = MODE_EDIT;
+  var lastBlockCoord;
+  var historyPoint;
+
+  canvas.addEventListener('mousedown', onMouseDown);
+  canvas.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('mouseup', onMouseUp);
+  window.addEventListener('mouseup', onMouseUp);
+
+  /*
+  var Map = classify(
+    function(width, height, canvas) {
+      var me = this;
+      me._ = {
+        width: width,
+        height: height,
+        canvas: canvas,
+        undoIndex: 0,
+        undoStack: [],
+        freezeUndoStack: 0,
+        canvasContext: canvas.getContext('2d'),
+        start: undefined
+      };
+      canvas.width = width;
+      canvas.height = height;
+      var blocks = me._.blocks = [];
+      for (var x = 0; x < width; x++) {
+        var col = blocks[x] = [];
+        for(var y = 0; y < height; y++) {
+          col[y] = new Block(BLOCK_TYPE_GRASS);
+          me.drawBlock(x, y);
+        }
+      }
+    },
+    {
+      getters: ['width', 'height'],
+      prototype: {
+        getBlockAt: function(x, y) {
+          return this._.blocks[x][y];
+        },
+        setBlockAt: function(x, y, blockType, dontAddUndo) {
+          var extraUndo, me = this, args = arguments;
+          if (blockType == BLOCK_TYPE_WORM) {
+            var start = me._.start;
+            if (start) {
+              extraUndo = me.setBlockAt(start.x, start.y, BLOCK_TYPE_GRASS, true);
+            }
+            me._.start = { x: x, y: y };
+          }
+          else if (me._.blocks[x][y].getType() == BLOCK_TYPE_WORM) {
+            me._.start = undefined;
+          }
+          var oldBlockType = me._.blocks[x][y].getType();
+          me._.blocks[x][y] = new Block(blockType);
+          me.drawBlock(x, y);
+          function undo() {
+            me.setBlockAt(x, y, oldBlockType, true);
+            extraUndo && extraUndo();
+          }
+          !dontAddUndo
+            && me._.addToUndoStack(
+              undo,
+              function() {
+                me.setBlockAt.apply(me, args);
+              }
+            );
+          return undo;
+        }
+      },
+      privateKey: '_'
+    }
+  );
+*/
+
+  function Map(width, height, canvas) {
+    var me = this;
+    me._width = width;
+    me._height = height;
+    me._canvas = canvas;
+    canvas.width = width;
+    canvas.height = height;
+    me._start = undefined;
+    me._undoIndex = 0;
+    me._undoStack = [];
+    me._freezeUndoStack = 0;
+    me._canvasContext = canvas.getContext('2d');
+    var blocks = me._blocks = [];
+    for (var x = 0; x < width; x++) {
+      var col = blocks[x] = [];
+      for(var y = 0; y < height; y++) {
+        col[y] = new Block(BLOCK_TYPE_GRASS);
+        me.drawBlock(x, y);
+      }
+    }
+  }
+  Map.prototype.getWidth = function() {
+    return this._width;
+  };
+  Map.prototype.getHeight = function() {
+    return this._height;
+  };
+  Map.prototype.getBlockAt = function(x, y) {
+    return this._blocks[x][y];
+  };
+
+  /**
+   * Sets the block at the specified coordinates to the specified type.
+   * @param {number} x         The x coordinate of the block.
+   * @param {number} y         The y coordinate of the block.
+   * @param {string} blockType The type of the block.
+   * @param {boolean=} dontAddUndo  If set to true the undo function will not be
+   *     added to the maps undo stack.  The default is false.
+   * @return {!Function}       The function that undoes this action.
+   */
+  Map.prototype.setBlockAt = function(x, y, blockType, dontAddUndo) {
+    var extraUndo, me = this, args = arguments;
+    if (blockType == BLOCK_TYPE_WORM) {
+      var start = me._start;
+      if (start) {
+        extraUndo = me.setBlockAt(start.x, start.y, BLOCK_TYPE_GRASS, true);
+      }
+      me._start = { x: x, y: y };
+    }
+    else if (me._blocks[x][y].getType() == BLOCK_TYPE_WORM) {
+      me._start = undefined;
+    }
+    var oldBlockType = me._blocks[x][y].getType();
+    me._blocks[x][y] = new Block(blockType);
+    me.drawBlock(x, y);
+    function undo() {
+      me.setBlockAt(x, y, oldBlockType, true);
+      extraUndo && extraUndo();
+    }
+    !dontAddUndo
+      && me._addToUndoStack(
+        undo,
+        function() {
+          me.setBlockAt.apply(me, args);
+        }
+      );
+    return undo;
+  };
+
+  Map.prototype.drawBlock = function(x, y) {
+    var context = this._canvasContext;
+    var blockType = this.getBlockAt(x, y).getType();
+    var adjX = x * BLOCK_WIDTH, adjY = y * BLOCK_HEIGHT;
+    if (blockType == BLOCK_TYPE_WALL) {
+        context.fillStyle = '#000000';
+        context.fillRect(adjX + 1, adjY, BLOCK_WIDTH - 2, BLOCK_HEIGHT);
+        context.fillRect(adjX, adjY + 1, BLOCK_WIDTH, BLOCK_HEIGHT - 2);
+    }
+    else {
+      context.fillStyle = '#00FF00';
+      context.fillRect(adjX, adjY, BLOCK_WIDTH, BLOCK_HEIGHT);
+
+      if (blockType != BLOCK_TYPE_GRASS) {
+        var radius, fillStyle, offset = BLOCK_WIDTH / 2;
+        switch (blockType) {
+          case BLOCK_TYPE_WORM:
+            fillStyle = '#FF8800';
+            radius = offset;
+            break;
+          case BLOCK_TYPE_DIET:
+            fillStyle = '#0088FF';
+            radius = BLOCK_WIDTH / 3;
+            break;
+          case BLOCK_TYPE_FOOD:
+            fillStyle = '#FF0000';
+            radius = BLOCK_WIDTH / 4;
+            break;
+          case BLOCK_TYPE_SPEED:
+            fillStyle = '#FFFFFF';
+            radius = BLOCK_WIDTH / 4;
+            break;
+        }
+        context.fillStyle = fillStyle;
+        context.beginPath();
+        context.arc(adjX + offset, adjY + offset, radius, 0, Math.PI * 2, true);
+        context.closePath();
+        context.fill();
+      }
+    }
+  };
+
+  Map.prototype.makeLine = function(x1, y1, x2, y2, blockType) {
+    var me = this, args = arguments;
+    var xDelta = x2 - x1;
+    var yDelta = y2 - y1;
+    var pointsCount = Math.max(Math.abs(xDelta), Math.max(yDelta));
+    var undos = [];
+    for (var percent, i = 0; i <= pointsCount; i++) {
+      percent = i / pointsCount;
+      undos.push(
+        me.setBlockAt(
+          Math.round(x1 + xDelta * percent), // x
+          Math.round(y1 + yDelta * percent), // y
+          blockType,
+          true
+        )
+      );
+    }
+    me._addToUndoStack(
+      function() {
+        for(var undo, i = pointsCount; undo = undos[i]; i--) {
+          undo();
+        }
+      },
+      function() {
+        me.makeLine.apply(me, args);
+      }
+    );
+  };
+
+  Map.prototype._addToUndoStack = function(undo, redo) {
+    var me = this;
+    if (!me._freezeUndoStack) {
+      // If some actions have been undone, clear them out.
+      var undoIndex = me._undoIndex, undoStack = me._undoStack;
+      if (undoStack.length > undoIndex) {
+        undoStack.splice(Math.max(0, undoIndex));
+      }
+      me._undoIndex = undoStack.push({
+        undo: undo,
+        redo: redo
+      });
+    }
+  };
+
+  Map.prototype.canUndo = function() {
+    return this._undoIndex > 0;
+  };
+
+  Map.prototype.undo = function() {
+    var me = this;
+    if (me.canUndo()) {
+      var undoPoint = me._undoStack[--me._undoIndex];
+      if (undoPoint) {
+        me._freezeUndoStack = 1;
+        undoPoint.undo();
+        me._freezeUndoStack = 0;
+      }
+    }
+  };
+
+  Map.prototype.canRedo = function() {
+    return this._undoIndex < this._undoStack.length;
+  };
+
+  Map.prototype.redo = function() {
+    var me = this;
+    if (me.canRedo()) {
+      var undoPoint = me._undoStack[me._undoIndex++];
+      if (undoPoint) {
+        me._freezeUndoStack = 1;
+        undoPoint.redo();
+        me._freezeUndoStack = 0;
+      }
+    }
+  };
+
+  var Block = classify(
+    function(blockType) {
+      this._ = { type: blockType };
+    },
+    {
+      getters: ['type']
+    }
+  );
+
+  myMap = new Map(MAP_WIDTH, MAP_HEIGHT, canvas);
+};
+</script>
+</head>
+<body>
+<canvas id="canvasGame"></canvas>
+<a href="javascript:void(blockType = BLOCK_TYPE_DIET)">Diet</a>
+<a href="javascript:void(blockType = BLOCK_TYPE_FOOD)">Food</a>
+<a href="javascript:void(blockType = BLOCK_TYPE_GRASS)">Grass</a>
+<a href="javascript:void(blockType = BLOCK_TYPE_SPEED)">Speed</a>
+<a href="javascript:void(blockType = BLOCK_TYPE_WALL)">Wall</a>
+<a href="javascript:void(blockType = BLOCK_TYPE_WORM)">Worm</a>
+<a href="javascript:myMap.undo()">Undo</a>
+<a href="javascript:myMap.redo()">Redo</a>
+</body>
+</html>
